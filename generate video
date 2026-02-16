@@ -1,9 +1,0 @@
-Form-data fields:
-
-- `image`: Image file (jpg/png)
-- `audio`: Audio file (mp3)
-- `duration`: Video length in seconds (default 18)
-
-Returns:
-
-- MP4 video file
