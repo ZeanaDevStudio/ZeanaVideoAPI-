@@ -1,33 +1,20 @@
-# main.py
+import subprocess
+import uuid
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-import os
-import tempfile
-from moviepy.editor import ImageClip, AudioFileClip
 from fastapi.responses import FileResponse
+from moviepy.editor import ImageClip, AudioFileClip
 
 app = FastAPI()
-
-# Allow your app to access this API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # later restrict to your Zeana app domain if needed
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.post("/generate-video")
 async def generate_video(
     image: UploadFile = File(...),
     audio: UploadFile = File(...),
-    duration: int = Form(18)  # default 18 seconds
+    duration: int = Form(...)
 ):
-    temp_dir = tempfile.mkdtemp()
-
-    image_path = os.path.join(temp_dir, "image.jpg")
-    audio_path = os.path.join(temp_dir, "audio.mp3")
-    video_path = os.path.join(temp_dir, "output.mp4")
+    image_path = f"/tmp/{uuid.uuid4()}_{image.filename}"
+    audio_path = f"/tmp/{uuid.uuid4()}_{audio.filename}"
+    output_path = f"/tmp/output_{uuid.uuid4()}.mp4"
 
     # Save uploaded files
     with open(image_path, "wb") as f:
@@ -36,10 +23,23 @@ async def generate_video(
     with open(audio_path, "wb") as f:
         f.write(await audio.read())
 
-    # Create video from image and audio
-    clip = ImageClip(image_path).set_duration(duration)
-    audio_clip = AudioFileClip(audio_path)
-    clip = clip.set_audio(audio_clip)
-    clip.write_videofile(video_path, fps=24, codec="libx264")
+    # Create video from image
+    image_clip = ImageClip(image_path, duration=duration)
+    image_clip = image_clip.set_duration(duration)
+    image_clip.write_videofile("/tmp/temp_video.mp4", fps=1)
 
-    return FileResponse(video_path, media_type="video/mp4")
+    # Use FFmpeg to merge video + audio (most stable)
+    merge_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", "/tmp/temp_video.mp4",
+        "-i", audio_path,
+        "-c:v", "libx264",
+        "-c:a", "aac",
+        "-shortest",
+        output_path
+    ]
+
+    subprocess.run(merge_cmd, check=True)
+
+    return FileResponse(output_path, media_type="video/mp4", filename="final_video.mp4")
